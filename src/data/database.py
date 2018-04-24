@@ -186,3 +186,139 @@ def insert_closing_prices_table(product_map, ts_dict, sqlite_file, table_name='C
     # Close connection to database
     conn.commit()
     conn.close()
+
+def clean_df(df, days=200):
+    ''' This function takes in a dataframe and number of days and returns a cleaned dataframe, with only the last
+        "days" number of data points, with irrelevant data dropped and relevant columns renamed, and the `change`
+        column corrected.
+
+        Args: df - dataframe of price information
+              days - number of data points to extract from the end
+
+        Return: df - dataframe cleaned, with relevant and correct price information
+    '''
+    # Filter data to get the last 200 data points with a real settle price
+    df = df[df.Settle > 0.0][-days:]
+
+    # Drop unnecessary columns and rename
+    df = df.reindex(columns=['Open', 'High', 'Low', 'Settle', 'Volume', 'Open Interest'])
+    df.rename(columns={'Open': 'open',
+                       'High': 'high',
+                       'Low': 'low',
+                       'Settle': 'close',
+                       'Volume': 'volume',
+                       'Open Interest': 'open_interest'}, inplace=True)
+
+    # Add `change` back in correctly
+    df['change'] = df.close - df.close.shift()
+
+    return df[1:]
+
+def get_quandl_list(product, product_map, api_key, start_year=2006, end_year=2016):
+    ''' This function takes in a product, map, start and end year as well as an api key for quandl,
+        and returns a list of dataframes for price information on each futures contract from the start
+        date to the end date.
+
+        Args: product - str symbol for specific product
+              product_map - dict mapping product symbols to information
+              start_year - int year to start analysis
+              end_year - int year to end analysis
+              api_key - str api key for quandl
+
+        Return: df_list - list of dataframes of price information
+    '''
+    # Initialize final list of dataframes
+    df_list = []
+
+    # Set exchange and contract information for product
+    exch = product_map[product][3]
+    contracts = product_map[product][4]
+
+    # Iterate through all years
+    for year in range(start_year, end_year + 1):
+        # Over all contract months
+        for month in contracts:
+            # Call quandl API, clean data and append to final list
+            df = quandl.get('{}/{}{}{}'.format(exch, product, month, year), authtoken=api_key)
+            df = clean_df(df)
+            df_list.append(df)
+
+    return df_list
+
+def concat_contracts(df1, df2):
+    ''' This function takes in 2 dataframes of closing price information for consecutive futures
+        contracts and concatenates them using a 4-day rolling window.  It returns a dataframe of the
+        concatenation.
+
+        Args: df1 - the first dataframe of closing price info
+              df2 - the next dataframe of closing price info
+
+        Return: concat_df - dataframe of the concatenation of df1 and df2
+    '''
+    # Store important roll dates for indexing later
+    last_date = df1.index[-5]
+    roll_dates = [df1.index[-x] for x in range(4,0,-1)]
+    df1_roll_index = df1.index.get_loc(roll_dates[0])
+    df2_roll_index = df2.index.get_loc(roll_dates[0])
+    first_date = df2.index[df2_roll_index + 4]
+
+    # Create a list of the roll calculations for each day
+    roll_calc = [((0.8 * df1.close[df1_roll_index]) + 0.2 * df2.close[df2_roll_index]),
+                 ((0.6 * df1.close[(df1_roll_index + 1)]) + 0.4 * df2.close[(df2_roll_index + 1)]),
+                 ((0.4 * df1.close[(df1_roll_index + 2)]) + 0.6 * df2.close[(df2_roll_index + 2)]),
+                 ((0.2 * df1.close[(df1_roll_index + 3)]) + 0.8 * df2.close[(df2_roll_index + 3)])]
+
+    # Take all data from first series up to last_date
+    concat_df = pd.DataFrame(df1.close[:last_date])
+    concat_df.columns = ['close']
+
+    # Iterate through roll_dates and roll_calc to append roll data
+    for i in range(4):
+        concat_df.loc[roll_dates[i]] = roll_calc[i]
+
+    # Finally concatenate the rest of the data from the second series
+    concat_df = pd.DataFrame(pd.concat([concat_df.close, df2.close[first_date:]]))
+    concat_df.columns = ['close']
+
+    return concat_df
+
+def combine_list(df_list):
+    ''' This function takes in a list of dataframes and combines them, returning a final_df which is the
+        concatenation of all dataframes in the list.
+
+        Args: df_list - list of dataframes in consecutive order
+
+        Return: final_df - dataframe which is the concatenation of the list of dataframes
+    '''
+    # If only one dataframe in list just return it
+    if len(df_list) == 1:
+        return df_list[0]
+
+    # Set final dataframe equal to first in list
+    final_df = df_list[0]
+
+    # Iterate through the rest of the dataframes and apply `concat_contracts` function
+    for i in range(1, len(df_list)):
+        final_df = concat_contracts(final_df, df_list[i])
+
+    return final_df
+
+def create_ts_dict(product_map, api_key):
+    ''' This function uses the helper functions to create a ts_dict based on all products in
+        the product_map.  It returns a time-series dict of symbol mapped to time-series.
+
+        Args: product_map - dict of symbols to price information
+              api_key - str api_key for quandl
+
+        Return: ts_dict - dict of symbol mapped to time-series
+    '''
+    # Initialize dict for time-series
+    ts_dict = {}
+
+    # Iterate through product_map and populate the ts_dict
+    for product in product_map:
+        prod_list = get_quandl_list(product, product_map, api_key)
+        prod_df = combine_list(prod_list)
+        ts_dict[product] = prod_df
+
+    return ts_dict
