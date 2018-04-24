@@ -6,7 +6,12 @@
     tables and links them using table specific ids.
 """
 
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 import sqlite3
+import quandl
+from datetime import timedelta
 
 def db_setup(filename):
     # DATA VENDOR TABLE
@@ -90,11 +95,7 @@ def db_setup(filename):
     data_id_col = 'data_id'
     symbol_col = 'symbol'
     date_col = 'date'
-    open_col = 'open'
-    high_col = 'high'
-    low_col = 'low'
     close_col = 'close'
-    volume_col = 'volume'
 
     dtype_int = 'INTEGER'
     dtype_text = 'TEXT'
@@ -109,16 +110,79 @@ def db_setup(filename):
                               {dc} {dti},\
                               {sc} {dtt},\
                               {dtc} {dtt},\
-                              {oc} {dtr},\
-                              {hc} {dtr},\
-                              {lc} {dtr},\
                               {cc} {dtr},\
-                              {vc} {dti},\
                               FOREIGN KEY ({sc}) REFERENCES {pt} ({sc}))'\
          .format(tn=table_name, ic=id_col, dti=dtype_int, dc=data_id_col, sc=symbol_col,\
-                 dtt=dtype_text, dtc=date_col, oc=open_col, dtr=dtype_real, hc=high_col,\
-                 lc=low_col, cc=close_col, vc=volume_col, pt=products_table))
+                 dtt=dtype_text, dtc=date_col, cc=close_col, dtr=dtype_real, pt=products_table))
 
     # Commit changes and close
+    conn.commit()
+    conn.close()
+
+def insert_products_table(product_map, sqlite_file, table_name='Products'):
+    ''' This function takes in a dict of product symbols mapped to
+        information about the product.  It also takes in a sqlite file and then
+        uses the info to insert all symbols in the dict into the Products
+        table of the database.
+
+        Args: product_dict - a dict of symbols for products with maps to
+                             a list of info
+              sqlite_file - file for the database to write to
+              table_name - default to 'Products' for this function
+
+        Return: None - nothing explicit but inserts info into the database
+    '''
+    # Create the column name list for database insertion
+    cols = ['data_id', 'symbol', 'name', 'sector', 'exchange', 'contracts']
+
+    # Open a connection to the database
+    conn = sqlite3.connect(sqlite_file)
+    c = conn.cursor()
+
+    # Iterate through all symbols of product_dict
+    for symbol, s_info in product_map.items():
+        # Set params and insert row into database
+        params = (s_info[0], symbol, s_info[1], s_info[2], s_info[3], s_info[4])
+        c.execute("INSERT INTO {tn} ({c0}, {c1}, {c2}, {c3}, {c4}, {c5}) VALUES (?, ?, ?, ?, ?, ?)"\
+            .format(tn=table_name, c0=cols[0], c1=cols[1], c2=cols[2],\
+            c3=cols[3], c4=cols[4], c5=cols[5]), params)
+
+    # Close connection to database
+    conn.commit()
+    conn.close()
+
+def insert_closing_prices_table(product_map, ts_dict, sqlite_file, table_name='Closing_Prices'):
+    ''' This function takes in a 2 dicts, one with product keys mapping
+        to info about the product and the other with product keys mapping
+        to a time-series of closing price information.  It also takes in a sqlite
+        file and then uses the info to insert all rows into the Closing_Prices
+        table of the database.
+
+        Args: product_dict - a dict of symbols for products with maps to
+                             a list of info
+              df_dict - dict of dataframes with futures symbols and price data
+              sqlite_file - file for the database to write to
+              table_name - default to 'Closing_Prices' for this function
+
+        Return: None - nothing explicit but inserts info into the database
+    '''
+    # Create the column name list for database insertion
+    cols = ['data_id', 'symbol', 'date', 'close']
+
+    # Open a connection to the database
+    conn = sqlite3.connect(sqlite_file)
+    c = conn.cursor()
+
+    # Iterate through all symbols and then the dataframe to get all price data
+    for symbol, ts in ts_dict.items():
+        data_id = product_map[symbol][0]
+        for i, row in ts.iterrows():
+            date = i.strftime('%Y-%m-%d')
+            # Set params and insert row into database
+            params = (data_id, symbol, date, row.close)
+            c.execute("INSERT INTO {tn} ({c0}, {c1}, {c2}, {c3}) VALUES (?, ?, ?, ?)"\
+                .format(tn=table_name, c0=cols[0], c1=cols[1], c2=cols[2], c3=cols[3]), params)
+
+    # Close connection to database
     conn.commit()
     conn.close()
