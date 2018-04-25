@@ -317,6 +317,7 @@ def create_ts_dict(product_map, api_key):
 
     # Iterate through product_map and populate the ts_dict
     for product in product_map:
+        print('.....Getting closing price info for {}.....'.format(product))
         prod_list = get_quandl_list(product, product_map, api_key)
         prod_df = combine_list(prod_list)
         ts_dict[product] = prod_df

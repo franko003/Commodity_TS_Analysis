@@ -6,7 +6,7 @@
     the product_map.
 """
 
-from data.database.py import *
+from data.database import *
 
 import os
 from dotenv import load_dotenv, find_dotenv
@@ -34,7 +34,26 @@ product_map = {'CL': [1, 'Crude_Oil', 'Energy', 'CME', 'FGHJKMNQUVXZ'],
 
 if __name__ == "__main__":
     print('')
-    print('This program acquires, cleans, and stores data for all products in product_map')
+    print('This program acquires, cleans, and stores data for all products')
     print('')
 
-    
+    db_file = input('Please provide a name for the database file (ex. my_db.sqlite): ')
+    print('')
+
+    print('.....Setting up database schema.....')
+    db_setup(db_file)
+    print('')
+
+    print('.....Populating "Products" table.....')
+    insert_products_table(product_map, db_file)
+    print('')
+
+    print('.....Creating a continuous time-series for each product.....')
+    ts_dict = create_ts_dict(product_map, API_KEY)
+    print('')
+
+    print('.....Populating "Closing_Prices" table.....')
+    insert_closing_prices_table(product_map, ts_dict, db_file)
+    print('')
+
+    print('.....Program complete.....')
