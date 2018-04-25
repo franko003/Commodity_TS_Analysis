@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # # -*- coding: utf-8 -*-
 
-"""" This module contains all the code for initial setup of the sqlite3 database to
+""" This module contains all the code for initial setup of the sqlite3 database to
     keep all data vendor, product, and price information.  It creates three separate
     tables and links them using table specific ids.
 """
