@@ -36,15 +36,48 @@ def generate_time_series(product, start_year, end_year, db_file):
     return ts
 
 def add_hist_vol(ts, period=20):
-    ''' This function takes in a time-series and a period (default to 20) and adds a historical
-        volatility column to the time-series, based on the period given.
+    ''' This function takes in a time-series and a period (default to 20) and returns a new
+        time-series with a historical volatility column, based on the period given.
 
         Args: ts - dataframe time-series of closing price data
               period - int number of days used to calculate the historical vol
 
-        Return: ts - dataframe time-series with added hist vol column
+        Return: cpy - dataframe new time-series with added hist vol column
     '''
-    # Add historical vol column given period length
-    ts['{}d_hist_vol'.format(str(period))] = math.sqrt(252) * ts.pct_change().rolling(window=period, center=False).std()
+    # Create a copy of the time-series to manipulate, and a string name for new column
+    cpy = ts.copy()
+    col_name = '{}d_hist_vol'.format(str(period))
 
-    return ts
+    # Add historical vol column given period length
+    cpy[col_name] = round(math.sqrt(252) * cpy.pct_change().rolling(window=period, center=False).std(), 4)
+
+    return cpy
+
+def plot_ts(ts):
+    ''' This function takes in a time-series and plots the closing price and historical vol data.
+
+        Args: ts - dataframe of time-series of closing price and historical vol data
+
+        Return: None - plots both the closing price and historical vol data for time-series
+    '''
+    # Extract period from time-series column name
+    period = ts.columns.tolist()[1][:ts.columns.tolist()[1].find('d')]
+
+    # Create figure and axes to plot each series of data
+    fig, (ax1, ax2) = plt.subplots(2,1, figsize=(12,8), gridspec_kw={'height_ratios': [3, 1]})
+
+    # Plot the closing prices
+    ax1.plot(ts.index, ts['close'])
+    ax1.set(title='Time-series Closing Price and\n {}-day Historical Volatility'.format(period))
+    ax1.set_ylabel('Closing Price')
+    ax1.grid()
+
+    # Plot the historical volatility
+    ax2.plot(ts.index, ts['{}d_hist_vol'.format(period)], color='orange')
+    ax2.set_xlabel('Date')
+    ax2.set_ylabel('Volatility')
+    ax2.grid()
+
+    # Show both plots
+    fig.tight_layout()
+    fig.show()
