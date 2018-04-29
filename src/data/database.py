@@ -14,6 +14,13 @@ import quandl
 from datetime import timedelta
 
 def db_setup(filename):
+    ''' This function takes in a filename and creates a database schema with Data_Vendor,
+        Products, and Closing_Prices tables.
+
+        Args: filename - str name of database file
+
+        Return: None - sets up schema for database
+    '''
     # DATA VENDOR TABLE
     # Initialize variables for file name, table, columns, data types
     sqlite_file = filename
